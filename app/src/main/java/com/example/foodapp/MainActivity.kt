@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -78,68 +79,78 @@ fun LoginScreen(navController: NavController, modifier: Modifier = Modifier) {
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-        Text(
-            text = "Bem-vindo!",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+    Text(
+        text = "Bem-vindo!",
+        style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+        color = MaterialTheme.colorScheme.primary
+    )
 
-            BasicTextField(
-                value = username.value,
-                onValueChange = {
-                    username.value = it
-                    errorMessage.value = "" // Clear error message when user starts typing
-                },
-                decorationBox = { innerTextField ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp)
-                            .background(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                                MaterialTheme.shapes.small
-                            ),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        if (username.value.isEmpty()) {
-                            Text("Email", color = MaterialTheme.colorScheme.primary)
-                        }
-                        innerTextField()
+    BasicTextField(
+        value = username.value,
+        onValueChange = {
+            username.value = it
+            errorMessage.value = "" // Clear error message when user starts typing
+        },
+        decorationBox = { innerTextField ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+                    .background(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        MaterialTheme.shapes.small
+                    ),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 8.dp) // Add internal padding
+                ) {
+                    if (username.value.isEmpty()) {
+                        Text("Email", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
+                    innerTextField()
+                }
+            }
+        },
+        modifier = Modifier.fillMaxWidth()
+    )
 
-            BasicTextField(
-                value = password.value,
-                onValueChange = {
-                    password.value = it
-                    errorMessage.value = ""
-                },
-                visualTransformation = PasswordVisualTransformation(),
-                decorationBox = { innerTextField ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp)
-                            .background(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                                MaterialTheme.shapes.small
-                            ),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        if (password.value.isEmpty()) {
-                            Text("Senha", color = MaterialTheme.colorScheme.primary)
-                        }
-                        innerTextField()
+    BasicTextField(
+        value = password.value,
+        onValueChange = {
+            password.value = it
+            errorMessage.value = ""
+        },
+        visualTransformation = PasswordVisualTransformation(),
+        decorationBox = { innerTextField ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+                    .background(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        MaterialTheme.shapes.small
+                    ),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 8.dp) // Add internal padding
+                ) {
+                    if (password.value.isEmpty()) {
+                        Text("Senha", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
+                    innerTextField()
+                }
+            }
+        },
+        modifier = Modifier.fillMaxWidth()
+    )
 
             // Error message display
             if (errorMessage.value.isNotEmpty()) {
@@ -182,14 +193,14 @@ fun LoginScreen(navController: NavController, modifier: Modifier = Modifier) {
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Entrar")
+                Text("Entrar", fontWeight = FontWeight.Bold)
             }
 
             TextButton(
                 onClick = { navController.navigate("signup") },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Não tenho conta", color = MaterialTheme.colorScheme.primary)
+                Text("Não tenho conta", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -215,7 +226,8 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
             Text(
                 text = "Crie sua conta",
                 style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
             )
 
             BasicTextField(
@@ -232,10 +244,15 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                             ),
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        if (email.value.isEmpty()) {
-                            Text("Email", color = MaterialTheme.colorScheme.primary)
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 8.dp) // Add internal padding
+                        ) {
+                            if (email.value.isEmpty()) {
+                                Text("Email", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            }
+                            innerTextField()
                         }
-                        innerTextField()
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -256,10 +273,15 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                             ),
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        if (password.value.isEmpty()) {
-                            Text("Senha", color = MaterialTheme.colorScheme.primary)
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 8.dp) // Add internal padding
+                        ) {
+                            if (password.value.isEmpty()) {
+                                Text("Senha", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            }
+                            innerTextField()
                         }
-                        innerTextField()
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -280,10 +302,15 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                             ),
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        if (confirmPassword.value.isEmpty()) {
-                            Text("Confirmar Senha", color = MaterialTheme.colorScheme.primary)
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 8.dp) // Add internal padding
+                        ) {
+                            if (confirmPassword.value.isEmpty()) {
+                                Text("Confirmar Senha", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            }
+                            innerTextField()
                         }
-                        innerTextField()
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -298,7 +325,7 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                                     .addOnCompleteListener { task ->
                                         if (task.isSuccessful) {
                                             // Cadastro bem-sucedido, pode navegar ou exibir mensagem
-                                            navController.navigate("login")
+                                            navController.navigate("login", )
                                         } else {
                                             // Mostrar erro
                                             task.exception?.message?.let { error ->
@@ -318,14 +345,14 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Cadastrar")
+                Text("Cadastrar", fontWeight = FontWeight.Bold)
             }
 
             TextButton(
                 onClick = { navController.navigate("login") },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Já tenho conta", color = MaterialTheme.colorScheme.primary)
+                Text("Já tenho conta", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             }
         }
     }
