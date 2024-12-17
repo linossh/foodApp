@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">foodApp</string>
+    <string name="home_str">Home</string>
+    <string name="forum_str">Forun</string>
+    <string name="groups_str">Groups</string>
+    <string name="profile_str">Profile</string>
 </resources>

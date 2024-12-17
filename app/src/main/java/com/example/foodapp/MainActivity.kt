@@ -61,7 +61,7 @@ fun AppNavigation(navController: NavHostController, modifier: Modifier = Modifie
             SignUpScreen(navController = navController, modifier = modifier)
         }
         composable("welcome") {
-            WelcomeScreen()
+            ProgramaPrincipal()
         }
     }
 }
@@ -358,11 +358,3 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-fun WelcomeScreen() {
-    Text(
-        text = "Welcome",
-        style = MaterialTheme.typography.headlineLarge,
-        color = MaterialTheme.colorScheme.primary
-    )
-}
