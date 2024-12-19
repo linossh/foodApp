@@ -2,6 +2,7 @@ package com.example.foodapp
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,12 +18,14 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,9 +35,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -46,12 +51,53 @@ fun Ecra01() {
     var searchQuery by remember { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        // Logo e Nome da App
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.Center, // Centraliza horizontalmente
+            verticalAlignment = Alignment.CenterVertically // Alinha verticalmente
+        ) {
+            // Logo Circular
+            Image(
+                painter = painterResource(id = R.drawable.logo), // Substitua pelo nome correto do recurso
+                contentDescription = "Logo da App",
+                modifier = Modifier
+                    .size(64.dp) // Ajuste o tamanho do logo
+                    .clip(CircleShape) // Torna o logo circular
+                    .border(
+                        width = 10.dp,
+                        color = Color(0xFFFE4912), // Cor definida diretamente
+                        shape = CircleShape
+                    ))
+
+            Spacer(modifier = Modifier.width(12.dp)) // Espaço entre o logo e o texto
+
+            // Nome da App com Fonte Customizada
+            Text(
+                text = "FOODESS",
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontFamily = FontFamily.Monospace, // Aplica a fonte monoespaçada
+                    fontWeight = FontWeight.ExtraBold, // Torna o texto ainda mais destacado
+                    fontSize = MaterialTheme.typography.headlineMedium.fontSize * 1.2 // Aumenta o tamanho do texto
+                ),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
         // Barra de Pesquisa
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
             placeholder = { Text("Pesquisar restaurantes...") },
             singleLine = true,
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(id = R.drawable.baseline_search_24),
+                    contentDescription = "Ícone de pesquisa",
+                )
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp)
