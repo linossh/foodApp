@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -46,7 +47,8 @@ fun AppNavigation(navController: NavHostController) {
             Ecra03()
         }
         composable(Destino.Ecra04.route) {
-            Ecra04()
+            val userViewModel: UserViewModel = viewModel()
+            Ecra04(userViewModel = userViewModel)
         }
     }
 }

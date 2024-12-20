@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.firebase.auth.FirebaseAuth
 
 
 @Composable
@@ -205,12 +208,25 @@ fun Ecra03() {
     }
 }
 @Composable
-fun Ecra04() {
+fun Ecra04(userViewModel: UserViewModel) {
+    val auth = FirebaseAuth.getInstance()
+    val currentUser = auth.currentUser
+
+    LaunchedEffect(Unit) {
+        if (currentUser != null) {
+            userViewModel.updateUserName(currentUser.displayName ?: "Usuário")
+            userViewModel.updateUserEmail(currentUser.email ?: "")
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center)) {
-        Text(text = stringResource(id = R.string.profile_str),
-            fontWeight = FontWeight.Bold, color = Color.Gray,
+        Text(
+            text = "Bem-vindo, ${userViewModel.userName}",
+            fontWeight = FontWeight.Bold,
+            color = Color.Gray,
             modifier = Modifier.align(Alignment.CenterHorizontally),
-            textAlign = TextAlign.Center, fontSize = 18.sp
+            textAlign = TextAlign.Center,
+            fontSize = 18.sp
         )
     }
 }

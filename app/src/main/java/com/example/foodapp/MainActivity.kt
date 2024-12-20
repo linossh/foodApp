@@ -36,6 +36,7 @@ import androidx.navigation.compose.rememberNavController
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.google.firebase.auth.UserProfileChangeRequest
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -205,9 +206,9 @@ fun LoginScreen(navController: NavController, modifier: Modifier = Modifier) {
         }
     }
 }
-
 @Composable
 fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
+    val name = remember { mutableStateOf("") }
     val email = remember { mutableStateOf("") }
     val password = remember { mutableStateOf("") }
     val confirmPassword = remember { mutableStateOf("") }
@@ -230,6 +231,36 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                 fontWeight = FontWeight.Bold
             )
 
+            // Campo para o nome do usuário
+            BasicTextField(
+                value = name.value,
+                onValueChange = { name.value = it },
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp)
+                            .background(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                MaterialTheme.shapes.small
+                            ),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            if (name.value.isEmpty()) {
+                                Text("Nome", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            }
+                            innerTextField()
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // Campo para o e-mail
             BasicTextField(
                 value = email.value,
                 onValueChange = { email.value = it },
@@ -246,7 +277,7 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                     ) {
                         Box(
                             modifier = Modifier
-                                .padding(horizontal = 12.dp, vertical = 8.dp) // Add internal padding
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             if (email.value.isEmpty()) {
                                 Text("Email", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
@@ -258,6 +289,7 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // Campo para a senha
             BasicTextField(
                 value = password.value,
                 onValueChange = { password.value = it },
@@ -275,7 +307,7 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                     ) {
                         Box(
                             modifier = Modifier
-                                .padding(horizontal = 12.dp, vertical = 8.dp) // Add internal padding
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             if (password.value.isEmpty()) {
                                 Text("Senha", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
@@ -287,6 +319,7 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // Campo para confirmar a senha
             BasicTextField(
                 value = confirmPassword.value,
                 onValueChange = { confirmPassword.value = it },
@@ -304,7 +337,7 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                     ) {
                         Box(
                             modifier = Modifier
-                                .padding(horizontal = 12.dp, vertical = 8.dp) // Add internal padding
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             if (confirmPassword.value.isEmpty()) {
                                 Text("Confirmar Senha", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
@@ -316,32 +349,44 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // Botão de cadastro
             Button(
                 onClick = {
-                    if (email.value.isNotEmpty() && password.value.isNotEmpty()) {
-                        if (password.value == confirmPassword.value) {
-                            if (android.util.Patterns.EMAIL_ADDRESS.matcher(email.value).matches()) {
-                                auth.createUserWithEmailAndPassword(email.value, password.value)
-                                    .addOnCompleteListener { task ->
-                                        if (task.isSuccessful) {
-                                            // Cadastro bem-sucedido, pode navegar ou exibir mensagem
-                                            navController.navigate("login", )
+                    if (name.value.isEmpty() || email.value.isEmpty() || password.value.isEmpty()) {
+                        println("Erro: Todos os campos são obrigatórios.")
+                        return@Button
+                    }
+
+                    if (password.value != confirmPassword.value) {
+                        println("Erro: As senhas não coincidem.")
+                        return@Button
+                    }
+
+                    if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email.value).matches()) {
+                        println("Erro: Formato de e-mail inválido.")
+                        return@Button
+                    }
+
+                    auth.createUserWithEmailAndPassword(email.value, password.value)
+                        .addOnCompleteListener { task ->
+                            if (task.isSuccessful) {
+                                val user = auth.currentUser
+                                val profileUpdates = UserProfileChangeRequest.Builder()
+                                    .setDisplayName(name.value)
+                                    .build()
+
+                                user?.updateProfile(profileUpdates)
+                                    ?.addOnCompleteListener { updateTask ->
+                                        if (updateTask.isSuccessful) {
+                                            navController.navigate("login")
                                         } else {
-                                            // Mostrar erro
-                                            task.exception?.message?.let { error ->
-                                                println("Erro: $error")
-                                            }
+                                            println("Erro ao atualizar o perfil: ${updateTask.exception?.message}")
                                         }
                                     }
                             } else {
-                                println("Erro: Formato de e-mail inválido.")
+                                println("Erro ao criar a conta: ${task.exception?.message}")
                             }
-                        } else {
-                            println("Erro: As senhas não coincidem.")
                         }
-                    } else {
-                        println("Erro: Todos os campos são obrigatórios.")
-                    }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
