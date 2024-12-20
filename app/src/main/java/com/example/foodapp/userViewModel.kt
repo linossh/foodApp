@@ -7,7 +7,7 @@ import androidx.lifecycle.ViewModel
 
 class UserViewModel : ViewModel() {
     // Variável para armazenar o nome do usuário
-    var userName: String by mutableStateOf("Usuário")
+    var userName: String by mutableStateOf("Utilizador")
         private set
 
     // Variável para armazenar o email do usuário
