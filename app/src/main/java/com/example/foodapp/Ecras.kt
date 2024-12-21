@@ -5,7 +5,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -55,12 +53,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+
 
 val db = Firebase.firestore
 
@@ -205,8 +203,11 @@ fun RestaurantItem(restaurant: Restaurant) {
 }
 @Composable
 fun Ecra02() {
+    val auth = FirebaseAuth.getInstance() // Instância do Firebase Auth
     val db = FirebaseFirestore.getInstance() // Instância do Firestore
-    var messages by remember { mutableStateOf(listOf<Pair<String, String>>()) } // Lista de mensagens (nome, mensagem)
+    val currentUser = auth.currentUser
+    val currentUserId = currentUser?.uid
+    var messages by remember { mutableStateOf(listOf<Triple<String, String, String>>()) } // Lista de mensagens (userId, nome, mensagem)
     var currentMessage by remember { mutableStateOf("") }
 
     // Função para carregar mensagens do Firestore
@@ -219,9 +220,10 @@ fun Ecra02() {
                 }
                 if (snapshot != null && !snapshot.isEmpty) {
                     val fetchedMessages = snapshot.documents.map { doc ->
+                        val userId = doc.getString("userId") ?: ""
                         val name = doc.getString("name") ?: "Anônimo"
                         val message = doc.getString("message") ?: ""
-                        name to message
+                        Triple(userId, name, message)
                     }
                     messages = fetchedMessages.reversed() // Inverte para mostrar as mais recentes no final
                 }
@@ -238,8 +240,10 @@ fun Ecra02() {
                 .padding(16.dp),
             reverseLayout = true // Mensagens recentes aparecem no final da lista
         ) {
-            items(messages) { (userName, message) ->
-                MessageItem(userName = userName, message = message)
+            items(messages) { (userId, userName, message) ->
+                val isCurrentUser = userId == currentUserId
+                val displayName = if (isCurrentUser) "Você" else userName
+                MessageItem(userName = displayName, message = message, isCurrentUser = isCurrentUser)
             }
         }
 
@@ -265,7 +269,8 @@ fun Ecra02() {
                 onClick = {
                     if (currentMessage.isNotBlank()) {
                         val newMessage = hashMapOf(
-                            "name" to "Usuário Exemplo", // Substitua pelo nome real do usuário
+                            "name" to (currentUser?.displayName ?: "Anônimo"),
+                            "userId" to currentUserId,
                             "message" to currentMessage
                         )
                         db.collection("messages").add(newMessage)
@@ -293,27 +298,58 @@ fun Ecra02() {
 }
 
 @Composable
-fun MessageItem(userName: String, message: String) {
+fun MessageItem(userName: String, message: String, isCurrentUser: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
+        horizontalArrangement = if (isCurrentUser) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            painter = painterResource(id = R.drawable.baseline_face_24),
-            contentDescription = null,
+        if (!isCurrentUser) {
+            Icon(
+                painter = painterResource(id = R.drawable.baseline_face_24),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(32.dp)
+                    .padding(end = 8.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        Column(
             modifier = Modifier
-                .size(32.dp)
-                .padding(end = 8.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Column {
-            Text(text = userName, fontWeight = FontWeight.Bold)
-            Text(text = message)
+                .background(
+                    if (isCurrentUser) Color(0xFFFF6347) // Fundo laranja mais forte
+                    else Color(0xFFFFA494), // Fundo laranja mais claro
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .padding(8.dp)
+        ) {
+            Text(
+                text = if (isCurrentUser) "Você" else userName,
+                fontWeight = FontWeight.Bold,
+                color = if (isCurrentUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = message,
+                color = if (isCurrentUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        if (isCurrentUser) {
+            Icon(
+                painter = painterResource(id = R.drawable.baseline_face2_24),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(32.dp)
+                    .padding(start = 8.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
+
 @Composable
 fun Ecra03() {
     Column(modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center)) {
