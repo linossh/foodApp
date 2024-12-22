@@ -4,7 +4,9 @@ import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -30,9 +33,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -53,6 +59,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -202,15 +209,14 @@ fun RestaurantItem(restaurant: Restaurant) {
     }
 }
 @Composable
-fun Ecra02() {
-    val auth = FirebaseAuth.getInstance() // Instância do Firebase Auth
-    val db = FirebaseFirestore.getInstance() // Instância do Firestore
+fun Ecra02(navController: NavController) {
+    val auth = FirebaseAuth.getInstance()
+    val db = FirebaseFirestore.getInstance()
     val currentUser = auth.currentUser
     val currentUserId = currentUser?.uid
-    var messages by remember { mutableStateOf(listOf<Triple<String, String, String>>()) } // Lista de mensagens (userId, nome, mensagem)
-    var currentMessage by remember { mutableStateOf("") }
+    var messages by remember { mutableStateOf(listOf<Triple<String, String, String>>()) }
+    var showDialog by remember { mutableStateOf(false) }
 
-    // Função para carregar mensagens do Firestore
     LaunchedEffect(Unit) {
         db.collection("messages")
             .addSnapshotListener { snapshot, error ->
@@ -225,80 +231,136 @@ fun Ecra02() {
                         val message = doc.getString("message") ?: ""
                         Triple(userId, name, message)
                     }
-                    messages = fetchedMessages.reversed() // Inverte para mostrar as mais recentes no final
+                    messages = fetchedMessages.reversed()
                 }
             }
     }
 
-    // Layout principal
     Column(modifier = Modifier.fillMaxSize()) {
-        // Lista de mensagens
         LazyColumn(
             modifier = Modifier
-                .weight(1f) // Ocupa o espaço acima da TextBox
+                .weight(1f)
                 .fillMaxWidth()
                 .padding(16.dp),
-            reverseLayout = true // Mensagens recentes aparecem no final da lista
+            reverseLayout = true
         ) {
             items(messages) { (userId, userName, message) ->
                 val isCurrentUser = userId == currentUserId
                 val displayName = if (isCurrentUser) "Você" else userName
-                MessageItem(userName = displayName, message = message, isCurrentUser = isCurrentUser)
-            }
-        }
-
-        // Linha fixa na parte inferior
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp), // Espaçamento para não colar nas bordas
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // TextBox para escrever a mensagem
-            OutlinedTextField(
-                value = currentMessage,
-                onValueChange = { currentMessage = it },
-                placeholder = { Text("Escreva aqui...") },
-                modifier = Modifier
-                    .weight(1f) // Ocupa o espaço restante
-                    .padding(end = 8.dp) // Espaço entre TextBox e o botão
-            )
-
-            // Botão circular com o ícone
-            Button(
-                onClick = {
-                    if (currentMessage.isNotBlank()) {
-                        val newMessage = hashMapOf(
-                            "name" to (currentUser?.displayName ?: "Anônimo"),
-                            "userId" to currentUserId,
-                            "message" to currentMessage
-                        )
-                        db.collection("messages").add(newMessage)
-                            .addOnSuccessListener {
-                                Log.d("Firestore", "Mensagem adicionada com sucesso!")
-                            }
-                            .addOnFailureListener { e ->
-                                Log.e("Firestore", "Erro ao adicionar mensagem", e)
-                            }
-                        currentMessage = "" // Limpa o campo de texto
-                    }
-                },
-                shape = CircleShape,
-                contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.size(48.dp) // Botão circular
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.baseline_arrow_upward_24),
-                    contentDescription = "Enviar",
-                    tint = MaterialTheme.colorScheme.onPrimary
+                MessageItem(
+                    userName = displayName,
+                    message = message,
+                    isCurrentUser = isCurrentUser,
+                    userId = userId,
+                    navController = navController
                 )
             }
         }
+
+        Button(
+            onClick = { showDialog = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Text(text = "Adicionar Review")
+        }
+    }
+
+    if (showDialog) {
+        ReviewDialog(
+            onDismiss = { showDialog = false },
+            onSubmit = { restaurant, stars, review ->
+                val newMessage = hashMapOf(
+                    "name" to (currentUser?.displayName ?: "Anônimo"),
+                    "userId" to currentUserId,
+                    "message" to "Restaurante: $restaurant\nNota: ${"⭐".repeat(stars)}\n$review"
+                )
+                db.collection("messages").add(newMessage)
+                    .addOnSuccessListener {
+                        Log.d("Firestore", "Review adicionada com sucesso!")
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("Firestore", "Erro ao adicionar review", e)
+                    }
+                showDialog = false
+            }
+        )
     }
 }
 
 @Composable
-fun MessageItem(userName: String, message: String, isCurrentUser: Boolean) {
+fun ReviewDialog(
+    onDismiss: () -> Unit,
+    onSubmit: (String, Int, String) -> Unit
+) {
+    var restaurant by remember { mutableStateOf("") }
+    var stars by remember { mutableStateOf(3) }
+    var review by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "Adicionar Review") },
+        text = {
+            Column {
+                // Campo para o nome do restaurante
+                OutlinedTextField(
+                    value = restaurant,
+                    onValueChange = { restaurant = it },
+                    label = { Text("Restaurante") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Slider para a nota
+                Text(text = "Nota: ${"⭐".repeat(stars)}")
+                Slider(
+                    value = stars.toFloat(),
+                    onValueChange = { stars = it.toInt() },
+                    valueRange = 1f..5f,
+                    steps = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Campo para o texto da review
+                OutlinedTextField(
+                    value = review,
+                    onValueChange = { review = it },
+                    label = { Text("Review") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 4
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                if (restaurant.isNotBlank() && review.isNotBlank()) {
+                    onSubmit(restaurant, stars, review)
+                }
+            }) {
+                Text("Enviar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+
+@Composable
+fun MessageItem(
+    userName: String,
+    message: String,
+    isCurrentUser: Boolean,
+    userId: String,
+    navController: NavController
+) {
+    val maxWidthDp = (0.8f * LocalConfiguration.current.screenWidthDp).dp
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -312,16 +374,18 @@ fun MessageItem(userName: String, message: String, isCurrentUser: Boolean) {
                 contentDescription = null,
                 modifier = Modifier
                     .size(32.dp)
-                    .padding(end = 8.dp),
+                    .padding(end = 8.dp)
+                    .clickable { navController.navigate("profile/$userId") }, // Navega para o perfil
                 tint = MaterialTheme.colorScheme.primary
             )
         }
 
         Column(
             modifier = Modifier
+                .widthIn(max = maxWidthDp)
                 .background(
-                    if (isCurrentUser) Color(0xFFFF6347) // Fundo laranja mais forte
-                    else Color(0xFFFFA494), // Fundo laranja mais claro
+                    if (isCurrentUser) Color(0xFFFF6347)
+                    else Color(0xFFFFA494),
                     shape = RoundedCornerShape(8.dp)
                 )
                 .padding(8.dp)
@@ -346,6 +410,44 @@ fun MessageItem(userName: String, message: String, isCurrentUser: Boolean) {
                     .padding(start = 8.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
+        }
+    }
+}
+
+@Composable
+fun ProfileScreen(userId: String?) {
+    val db = FirebaseFirestore.getInstance() // Instância do Firestore
+    var userName by remember { mutableStateOf<String?>(null) }
+
+    // Busca o nome do usuário no Firestore
+    LaunchedEffect(userId) {
+        if (userId != null) {
+            db.collection("users").document(userId).get()
+                .addOnSuccessListener { document ->
+                    if (document != null && document.exists()) {
+                        userName = document.getString("name") // Supondo que o campo é "name"
+                    } else {
+                        userName = "Usuário não encontrado"
+                    }
+                }
+                .addOnFailureListener {
+                    userName = "Erro ao buscar dados do usuário"
+                }
+        }
+    }
+
+    // Layout da tela
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        if (userName != null) {
+            Text(
+                text = "Perfil do usuário: $userName",
+                style = MaterialTheme.typography.headlineSmall
+            )
+        } else {
+            CircularProgressIndicator() // Mostra um indicador de carregamento enquanto busca os dados
         }
     }
 }

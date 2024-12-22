@@ -41,7 +41,7 @@ fun AppNavigation(navController: NavHostController) {
             Ecra01()
         }
         composable(Destino.Ecra02.route) {
-            Ecra02()
+            Ecra02(navController = navController)
         }
         composable(Destino.Ecra03.route) {
             Ecra03()
@@ -49,6 +49,10 @@ fun AppNavigation(navController: NavHostController) {
         composable(Destino.Ecra04.route) {
             val userViewModel: UserViewModel = viewModel()
             Ecra04(userViewModel = userViewModel)
+        }
+        composable("profile/{userId}") { backStackEntry ->
+            val userId = backStackEntry.arguments?.getString("userId")
+            ProfileScreen(userId = userId)
         }
     }
 }
