@@ -209,14 +209,15 @@ fun RestaurantItem(restaurant: Restaurant) {
     }
 }
 @Composable
-fun Ecra02(navController: NavController) {
-    val auth = FirebaseAuth.getInstance()
-    val db = FirebaseFirestore.getInstance()
+fun Ecra02() {
+    val auth = FirebaseAuth.getInstance() // Instância do Firebase Auth
+    val db = FirebaseFirestore.getInstance() // Instância do Firestore
     val currentUser = auth.currentUser
     val currentUserId = currentUser?.uid
-    var messages by remember { mutableStateOf(listOf<Triple<String, String, String>>()) }
-    var showDialog by remember { mutableStateOf(false) }
+    var messages by remember { mutableStateOf(listOf<Triple<String, String, String>>()) } // Lista de mensagens (userId, nome, mensagem)
+    var showDialog by remember { mutableStateOf(false) } // Controle do diálogo
 
+    // Função para carregar mensagens do Firestore
     LaunchedEffect(Unit) {
         db.collection("messages")
             .addSnapshotListener { snapshot, error ->
@@ -231,32 +232,36 @@ fun Ecra02(navController: NavController) {
                         val message = doc.getString("message") ?: ""
                         Triple(userId, name, message)
                     }
-                    messages = fetchedMessages.reversed()
+                    messages = fetchedMessages.reversed() // Inverte para mostrar as mais recentes no final
                 }
             }
     }
 
+    // Layout principal
     Column(modifier = Modifier.fillMaxSize()) {
+        // Lista de mensagens
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .padding(16.dp),
-            reverseLayout = true
+            reverseLayout = false // Garantir que não está invertendo
         ) {
-            items(messages) { (userId, userName, message) ->
-                val isCurrentUser = userId == currentUserId
-                val displayName = if (isCurrentUser) "Você" else userName
-                MessageItem(
-                    userName = displayName,
-                    message = message,
-                    isCurrentUser = isCurrentUser,
-                    userId = userId,
-                    navController = navController
-                )
+            if (messages.isEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.weight(1f)) // Preenche o espaço acima quando não há mensagens
+                }
+            } else {
+                // Itens das mensagens
+                items(messages) { (userId, userName, message) ->
+                    val isCurrentUser = userId == currentUserId
+                    val displayName = if (isCurrentUser) "Você" else userName
+                    MessageItem(userName = displayName, message = message, isCurrentUser = isCurrentUser)
+                }
             }
         }
 
+        // Botão para abrir o diálogo
         Button(
             onClick = { showDialog = true },
             modifier = Modifier
@@ -267,6 +272,7 @@ fun Ecra02(navController: NavController) {
         }
     }
 
+    // Exibe o diálogo se necessário
     if (showDialog) {
         ReviewDialog(
             onDismiss = { showDialog = false },
@@ -350,16 +356,9 @@ fun ReviewDialog(
     )
 }
 
-
 @Composable
-fun MessageItem(
-    userName: String,
-    message: String,
-    isCurrentUser: Boolean,
-    userId: String,
-    navController: NavController
-) {
-    val maxWidthDp = (0.8f * LocalConfiguration.current.screenWidthDp).dp
+fun MessageItem(userName: String, message: String, isCurrentUser: Boolean) {
+    val maxWidthDp = (0.8f * LocalConfiguration.current.screenWidthDp).dp // Converte o cálculo para Dp
 
     Row(
         modifier = Modifier
@@ -374,18 +373,17 @@ fun MessageItem(
                 contentDescription = null,
                 modifier = Modifier
                     .size(32.dp)
-                    .padding(end = 8.dp)
-                    .clickable { navController.navigate("profile/$userId") }, // Navega para o perfil
+                    .padding(end = 8.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
         }
 
         Column(
             modifier = Modifier
-                .widthIn(max = maxWidthDp)
+                .widthIn(max = maxWidthDp) // Usa a largura máxima calculada
                 .background(
-                    if (isCurrentUser) Color(0xFFFF6347)
-                    else Color(0xFFFFA494),
+                    if (isCurrentUser) Color(0xFFFF6347) // Fundo laranja mais forte
+                    else Color(0xFFFFA494), // Fundo laranja mais claro
                     shape = RoundedCornerShape(8.dp)
                 )
                 .padding(8.dp)
@@ -410,44 +408,6 @@ fun MessageItem(
                     .padding(start = 8.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
-        }
-    }
-}
-
-@Composable
-fun ProfileScreen(userId: String?) {
-    val db = FirebaseFirestore.getInstance() // Instância do Firestore
-    var userName by remember { mutableStateOf<String?>(null) }
-
-    // Busca o nome do usuário no Firestore
-    LaunchedEffect(userId) {
-        if (userId != null) {
-            db.collection("users").document(userId).get()
-                .addOnSuccessListener { document ->
-                    if (document != null && document.exists()) {
-                        userName = document.getString("name") // Supondo que o campo é "name"
-                    } else {
-                        userName = "Usuário não encontrado"
-                    }
-                }
-                .addOnFailureListener {
-                    userName = "Erro ao buscar dados do usuário"
-                }
-        }
-    }
-
-    // Layout da tela
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        if (userName != null) {
-            Text(
-                text = "Perfil do usuário: $userName",
-                style = MaterialTheme.typography.headlineSmall
-            )
-        } else {
-            CircularProgressIndicator() // Mostra um indicador de carregamento enquanto busca os dados
         }
     }
 }
