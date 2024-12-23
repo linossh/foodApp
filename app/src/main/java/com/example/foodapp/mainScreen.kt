@@ -16,10 +16,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import androidx.webkit.Profile
 
 @Composable
 fun ProgramaPrincipal() {
@@ -41,7 +44,7 @@ fun AppNavigation(navController: NavHostController) {
             Ecra01()
         }
         composable(Destino.Ecra02.route) {
-            Ecra02()
+            Ecra02(navController = navController)
         }
         composable(Destino.Ecra03.route) {
             Ecra03()
@@ -49,6 +52,13 @@ fun AppNavigation(navController: NavHostController) {
         composable(Destino.Ecra04.route) {
             val userViewModel: UserViewModel = viewModel()
             Ecra04(userViewModel = userViewModel)
+        }
+        composable(
+            route = "${Destino.profile.route}/{userId}",
+            arguments = listOf(navArgument("userId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val userId = backStackEntry.arguments?.getString("userId") ?: ""
+            EcraProfile(userId = userId)
         }
     }
 }

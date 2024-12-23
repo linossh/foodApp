@@ -35,6 +35,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -60,6 +61,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.navigation.NavHostController
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -209,7 +211,7 @@ fun RestaurantItem(restaurant: Restaurant) {
     }
 }
 @Composable
-fun Ecra02() {
+fun Ecra02(navController: NavHostController) {
     val auth = FirebaseAuth.getInstance() // Instância do Firebase Auth
     val db = FirebaseFirestore.getInstance() // Instância do Firestore
     val currentUser = auth.currentUser
@@ -244,8 +246,7 @@ fun Ecra02() {
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(16.dp),
-            reverseLayout = false // Garantir que não está invertendo
+                .padding(16.dp)
         ) {
             if (messages.isEmpty()) {
                 item {
@@ -256,7 +257,13 @@ fun Ecra02() {
                 items(messages) { (userId, userName, message) ->
                     val isCurrentUser = userId == currentUserId
                     val displayName = if (isCurrentUser) "Você" else userName
-                    MessageItem(userName = displayName, message = message, isCurrentUser = isCurrentUser)
+                    MessageItem(
+                        userName = displayName,
+                        message = message,
+                        isCurrentUser = isCurrentUser,
+                        userId = userId,
+                        navController = navController // Pass the navController here
+                    )
                 }
             }
         }
@@ -357,8 +364,8 @@ fun ReviewDialog(
 }
 
 @Composable
-fun MessageItem(userName: String, message: String, isCurrentUser: Boolean) {
-    val maxWidthDp = (0.8f * LocalConfiguration.current.screenWidthDp).dp // Converte o cálculo para Dp
+fun MessageItem(userName: String, message: String, isCurrentUser: Boolean, userId: String, navController: NavController) {
+    val maxWidthDp = (0.8f * LocalConfiguration.current.screenWidthDp).dp
 
     Row(
         modifier = Modifier
@@ -368,28 +375,29 @@ fun MessageItem(userName: String, message: String, isCurrentUser: Boolean) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (!isCurrentUser) {
-            Icon(
-                painter = painterResource(id = R.drawable.baseline_face_24),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(32.dp)
-                    .padding(end = 8.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
+            IconButton(
+                onClick = { navController.navigate("${Destino.profile.route}/$userId") }
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.baseline_face_24),
+                    contentDescription = "Perfil de $userName",
+                    modifier = Modifier.size(32.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
         }
 
         Column(
             modifier = Modifier
-                .widthIn(max = maxWidthDp) // Usa a largura máxima calculada
+                .widthIn(max = maxWidthDp)
                 .background(
-                    if (isCurrentUser) Color(0xFFFF6347) // Fundo laranja mais forte
-                    else Color(0xFFFFA494), // Fundo laranja mais claro
+                    if (isCurrentUser) Color(0xFFFF6347) else Color(0xFFFFA494),
                     shape = RoundedCornerShape(8.dp)
                 )
                 .padding(8.dp)
         ) {
             Text(
-                text = if (isCurrentUser) "Você" else userName,
+                text = userName,
                 fontWeight = FontWeight.Bold,
                 color = if (isCurrentUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
             )
@@ -398,16 +406,40 @@ fun MessageItem(userName: String, message: String, isCurrentUser: Boolean) {
                 color = if (isCurrentUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
             )
         }
+    }
+}
 
-        if (isCurrentUser) {
-            Icon(
-                painter = painterResource(id = R.drawable.baseline_face2_24),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(32.dp)
-                    .padding(start = 8.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
+@Composable
+fun EcraProfile(userId: String) {
+    val db = FirebaseFirestore.getInstance()
+    var userName by remember { mutableStateOf("") }
+    var userReviews by remember { mutableStateOf(emptyList<String>()) }
+
+    // Fetch user data from Firestore
+    LaunchedEffect(userId) {
+        db.collection("users").document(userId).get().addOnSuccessListener { document ->
+            userName = document.getString("name") ?: "Anônimo"
+        }
+
+        db.collection("reviews").whereEqualTo("userId", userId).get()
+            .addOnSuccessListener { snapshot ->
+                userReviews = snapshot.documents.map { it.getString("message") ?: "" }
+            }
+    }
+
+    // Layout
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text(text = "Perfil de $userName", style = MaterialTheme.typography.headlineLarge)
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Reviews:", style = MaterialTheme.typography.titleMedium)
+        LazyColumn {
+            items(userReviews) { review ->
+                Text(text = review, modifier = Modifier.padding(8.dp))
+            }
         }
     }
 }
