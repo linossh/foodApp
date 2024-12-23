@@ -412,22 +412,40 @@ fun MessageItem(userName: String, message: String, isCurrentUser: Boolean, userI
 @Composable
 fun EcraProfile(userId: String) {
     val db = FirebaseFirestore.getInstance()
-    var userName by remember { mutableStateOf("") }
+    var userName by remember { mutableStateOf("Carregando...") } // Estado inicial enquanto carrega
     var userReviews by remember { mutableStateOf(emptyList<String>()) }
 
-    // Fetch user data from Firestore
+    // Buscar dados do usuário e suas reviews
     LaunchedEffect(userId) {
-        db.collection("users").document(userId).get().addOnSuccessListener { document ->
-            userName = document.getString("name") ?: "Anônimo"
-        }
+        // Buscar o nome do usuário
+        db.collection("users").document(userId).get()
+            .addOnSuccessListener { document ->
+                if (document.exists()) {
+                    userName = document.getString("name") ?: "Usuário desconhecido"
+                    Log.d("Firestore", "Nome do usuário carregado: $userName")
+                } else {
+                    userName = "Usuário não encontrado"
+                    Log.e("Firestore", "Documento não encontrado para userId: $userId")
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e("Firestore", "Erro ao buscar nome do usuário para userId: $userId", e)
+                userName = "Erro ao carregar nome"
+            }
 
-        db.collection("reviews").whereEqualTo("userId", userId).get()
+        // Buscar reviews do usuário
+        db.collection("messages").whereEqualTo("userId", userId).get()
             .addOnSuccessListener { snapshot ->
-                userReviews = snapshot.documents.map { it.getString("message") ?: "" }
+                userReviews = snapshot.documents.map { it.getString("message") ?: "Sem mensagem" }
+                Log.d("Firestore", "Reviews carregadas: $userReviews")
+            }
+            .addOnFailureListener { e ->
+                Log.e("Firestore", "Erro ao buscar reviews para userId: $userId", e)
+                userReviews = listOf("Erro ao carregar reviews.")
             }
     }
 
-    // Layout
+    // Layout do perfil
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -436,9 +454,14 @@ fun EcraProfile(userId: String) {
         Text(text = "Perfil de $userName", style = MaterialTheme.typography.headlineLarge)
         Spacer(modifier = Modifier.height(16.dp))
         Text(text = "Reviews:", style = MaterialTheme.typography.titleMedium)
-        LazyColumn {
-            items(userReviews) { review ->
-                Text(text = review, modifier = Modifier.padding(8.dp))
+
+        if (userReviews.isEmpty()) {
+            Text(text = "Sem reviews disponíveis.", modifier = Modifier.padding(8.dp))
+        } else {
+            LazyColumn {
+                items(userReviews) { review ->
+                    Text(text = review, modifier = Modifier.padding(8.dp))
+                }
             }
         }
     }
