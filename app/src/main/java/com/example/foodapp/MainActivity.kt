@@ -37,6 +37,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -206,6 +207,7 @@ fun LoginScreen(navController: NavController, modifier: Modifier = Modifier) {
         }
     }
 }
+
 @Composable
 fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
     val name = remember { mutableStateOf("") }
@@ -371,6 +373,9 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                         .addOnCompleteListener { task ->
                             if (task.isSuccessful) {
                                 val user = auth.currentUser
+                                val userId = user?.uid
+
+                                // Atualizar o perfil no Firebase Authentication
                                 val profileUpdates = UserProfileChangeRequest.Builder()
                                     .setDisplayName(name.value)
                                     .build()
@@ -378,7 +383,22 @@ fun SignUpScreen(navController: NavController, modifier: Modifier = Modifier) {
                                 user?.updateProfile(profileUpdates)
                                     ?.addOnCompleteListener { updateTask ->
                                         if (updateTask.isSuccessful) {
-                                            navController.navigate("login")
+                                            // Salvar o nome no Firestore
+                                            val db = FirebaseFirestore.getInstance()
+                                            val userData = mapOf(
+                                                "name" to name.value,
+                                                "email" to email.value
+                                            )
+                                            if (userId != null) {
+                                                db.collection("users").document(userId).set(userData)
+                                                    .addOnSuccessListener {
+                                                        println("Usuário salvo com sucesso no Firestore.")
+                                                        navController.navigate("login")
+                                                    }
+                                                    .addOnFailureListener { e ->
+                                                        println("Erro ao salvar usuário no Firestore: ${e.message}")
+                                                    }
+                                            }
                                         } else {
                                             println("Erro ao atualizar o perfil: ${updateTask.exception?.message}")
                                         }

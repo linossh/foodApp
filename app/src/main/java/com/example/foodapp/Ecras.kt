@@ -68,9 +68,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 
-
 val db = Firebase.firestore
-
 
 @Composable
 fun Ecra01() {
@@ -210,6 +208,7 @@ fun RestaurantItem(restaurant: Restaurant) {
         }
     }
 }
+
 @Composable
 fun Ecra02(navController: NavHostController) {
     val auth = FirebaseAuth.getInstance() // Instância do Firebase Auth
@@ -412,24 +411,18 @@ fun MessageItem(userName: String, message: String, isCurrentUser: Boolean, userI
 @Composable
 fun EcraProfile(userId: String) {
     val db = FirebaseFirestore.getInstance()
-    var userName by remember { mutableStateOf("Carregando...") } // Estado inicial enquanto carrega
+    var userName by remember { mutableStateOf("Carregando...") }
     var userReviews by remember { mutableStateOf(emptyList<String>()) }
+    val showDialog = remember { mutableStateOf(false) }
 
     // Buscar dados do usuário e suas reviews
     LaunchedEffect(userId) {
         // Buscar o nome do usuário
         db.collection("users").document(userId).get()
             .addOnSuccessListener { document ->
-                if (document.exists()) {
-                    userName = document.getString("name") ?: "Usuário desconhecido"
-                    Log.d("Firestore", "Nome do usuário carregado: $userName")
-                } else {
-                    userName = "Usuário não encontrado"
-                    Log.e("Firestore", "Documento não encontrado para userId: $userId")
-                }
+                userName = document.getString("name") ?: "Usuário desconhecido"
             }
-            .addOnFailureListener { e ->
-                Log.e("Firestore", "Erro ao buscar nome do usuário para userId: $userId", e)
+            .addOnFailureListener {
                 userName = "Erro ao carregar nome"
             }
 
@@ -437,33 +430,101 @@ fun EcraProfile(userId: String) {
         db.collection("messages").whereEqualTo("userId", userId).get()
             .addOnSuccessListener { snapshot ->
                 userReviews = snapshot.documents.map { it.getString("message") ?: "Sem mensagem" }
-                Log.d("Firestore", "Reviews carregadas: $userReviews")
             }
-            .addOnFailureListener { e ->
-                Log.e("Firestore", "Erro ao buscar reviews para userId: $userId", e)
+            .addOnFailureListener {
                 userReviews = listOf("Erro ao carregar reviews.")
             }
     }
 
-    // Layout do perfil
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(text = "Perfil de $userName", style = MaterialTheme.typography.headlineLarge)
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "Reviews:", style = MaterialTheme.typography.titleMedium)
+        // Ícone maior no topo
+        Icon(
+            painter = painterResource(id = R.drawable.baseline_face_24),
+            contentDescription = "Ícone de usuário",
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .size(128.dp)
+                .padding(top = 32.dp, bottom = 16.dp)
+        )
 
+        // Saudação personalizada
+        Text(
+            text = "Olá, $userName",
+            fontWeight = FontWeight.Bold,
+            fontSize = 28.sp,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+
+        // Linha divisória
+        Divider(
+            color = MaterialTheme.colorScheme.primary,
+            thickness = 1.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp)
+        )
+
+        // Título das reviews
+        Text(
+            text = "Reviews:",
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.align(Alignment.Start)
+        )
+
+        // Listagem de reviews ou mensagem padrão
         if (userReviews.isEmpty()) {
-            Text(text = "Sem reviews disponíveis.", modifier = Modifier.padding(8.dp))
+            Text(
+                text = "Sem reviews disponíveis.",
+                modifier = Modifier
+                    .padding(8.dp)
+                    .align(Alignment.Start)
+            )
         } else {
-            LazyColumn {
+            LazyColumn(
+                modifier = Modifier.weight(1f) // Preencher o espaço restante
+            ) {
                 items(userReviews) { review ->
-                    Text(text = review, modifier = Modifier.padding(8.dp))
+                    // Item de review com fundo e bordas arredondadas
+                    Text(
+                        text = review,
+                        modifier = Modifier
+                            .padding(vertical = 4.dp, horizontal = 8.dp) // Espaçamento entre os itens
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp)) // Borda arredondada
+                            .background(Color(0xFFFF6347)) // Fundo com a cor especificada
+                            .padding(16.dp), // Espaçamento interno
+                        color = Color.White // Cor do texto
+                    )
                 }
             }
         }
+
+        // Botão para alterar a senha
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = { showDialog.value = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(text = "Alterar Palavra-passe", fontWeight = FontWeight.Bold)
+        }
+    }
+
+    // Popup para alteração de senha
+    if (showDialog.value) {
+        PasswordChangeDialog(
+            onDismiss = { showDialog.value = false },
+            onPasswordChange = { oldPassword, newPassword, confirmPassword ->
+                // Adicione aqui a lógica para alterar a senha
+                showDialog.value = false
+            }
+        )
     }
 }
 
@@ -477,6 +538,7 @@ fun Ecra03() {
         )
     }
 }
+
 @Composable
 fun Ecra04(userViewModel: UserViewModel) {
     val auth = FirebaseAuth.getInstance()
