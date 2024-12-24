@@ -58,7 +58,10 @@ fun AppNavigation(navController: NavHostController) {
             arguments = listOf(navArgument("userId") { type = NavType.StringType })
         ) { backStackEntry ->
             val userId = backStackEntry.arguments?.getString("userId") ?: ""
-            EcraProfile(userId = userId)
+            EcraProfile(
+                userId = userId,
+                onBack = { navController.popBackStack() } // Define o comportamento do botão de voltar
+            )
         }
     }
 }

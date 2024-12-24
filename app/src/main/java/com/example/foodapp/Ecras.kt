@@ -409,7 +409,7 @@ fun MessageItem(userName: String, message: String, isCurrentUser: Boolean, userI
 }
 
 @Composable
-fun EcraProfile(userId: String) {
+fun EcraProfile(userId: String, onBack: () -> Unit) {
     val db = FirebaseFirestore.getInstance()
     var userName by remember { mutableStateOf("Carregando...") }
     var userReviews by remember { mutableStateOf(emptyList<String>()) }
@@ -436,95 +436,115 @@ fun EcraProfile(userId: String) {
             }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(16.dp)
     ) {
-        // Ícone maior no topo
-        Icon(
-            painter = painterResource(id = R.drawable.baseline_face_24),
-            contentDescription = "Ícone de usuário",
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .size(128.dp)
-                .padding(top = 32.dp, bottom = 16.dp)
-        )
-
-        // Saudação personalizada
-        Text(
-            text = "Olá, $userName",
-            fontWeight = FontWeight.Bold,
-            fontSize = 28.sp,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
-        // Linha divisória
-        Divider(
-            color = MaterialTheme.colorScheme.primary,
-            thickness = 1.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp)
-        )
-
-        // Título das reviews
-        Text(
-            text = "Reviews:",
-            fontWeight = FontWeight.Bold,
-            fontSize = 20.sp,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.align(Alignment.Start)
-        )
-
-        // Listagem de reviews ou mensagem padrão
-        if (userReviews.isEmpty()) {
-            Text(
-                text = "Sem reviews disponíveis.",
-                modifier = Modifier
-                    .padding(8.dp)
-                    .align(Alignment.Start)
+        // Botão de voltar no canto superior esquerdo
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier.align(Alignment.TopStart)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.baseline_arrow_back_24),
+                contentDescription = "Voltar",
+                tint = MaterialTheme.colorScheme.primary
             )
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f) // Preencher o espaço restante
-            ) {
-                items(userReviews) { review ->
-                    // Item de review com fundo e bordas arredondadas
-                    Text(
-                        text = review,
-                        modifier = Modifier
-                            .padding(vertical = 4.dp, horizontal = 8.dp) // Espaçamento entre os itens
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp)) // Borda arredondada
-                            .background(Color(0xFFFF6347)) // Fundo com a cor especificada
-                            .padding(16.dp), // Espaçamento interno
-                        color = Color.White // Cor do texto
-                    )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 48.dp), // Deixa espaço para o botão no topo
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Ícone maior no topo
+            Icon(
+                painter = painterResource(id = R.drawable.baseline_face_24),
+                contentDescription = "Ícone de usuário",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .size(128.dp)
+                    .padding(bottom = 16.dp)
+            )
+
+            // Nome do usuário
+            Text(
+                text = userName,
+                fontWeight = FontWeight.Bold,
+                fontSize = 28.sp,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            // Linha divisória
+            Divider(
+                color = MaterialTheme.colorScheme.primary,
+                thickness = 1.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp)
+            )
+
+            // Título das reviews
+            Text(
+                text = "Reviews de $userName:",
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp) // Alinha com as reviews
+            )
+
+            // Listagem de reviews ou mensagem padrão
+            if (userReviews.isEmpty()) {
+                Text(
+                    text = "Sem reviews disponíveis.",
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .align(Alignment.Start)
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f) // Preencher o espaço restante
+                ) {
+                    items(userReviews) { review ->
+                        // Item de review com fundo e bordas arredondadas
+                        Text(
+                            text = review,
+                            modifier = Modifier
+                                .padding(vertical = 4.dp, horizontal = 8.dp) // Espaçamento entre os itens
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp)) // Borda arredondada
+                                .background(Color(0xFFFF6347)) // Fundo com a cor especificada
+                                .padding(16.dp), // Espaçamento interno
+                            color = Color.White // Cor do texto
+                        )
+                    }
                 }
             }
-        }
 
-        // Botão para alterar a senha
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = { showDialog.value = true },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(text = "Alterar Palavra-passe", fontWeight = FontWeight.Bold)
-        }
-    }
-
-    // Popup para alteração de senha
-    if (showDialog.value) {
-        PasswordChangeDialog(
-            onDismiss = { showDialog.value = false },
-            onPasswordChange = { oldPassword, newPassword, confirmPassword ->
-                // Adicione aqui a lógica para alterar a senha
-                showDialog.value = false
+            // Botão para alterar a senha
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { showDialog.value = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "Alterar Palavra-passe", fontWeight = FontWeight.Bold)
             }
-        )
+        }
+
+        // Popup para alteração de senha
+        if (showDialog.value) {
+            PasswordChangeDialog(
+                onDismiss = { showDialog.value = false },
+                onPasswordChange = { oldPassword, newPassword, confirmPassword ->
+                    // Adicione aqui a lógica para alterar a senha
+                    showDialog.value = false
+                }
+            )
+        }
     }
 }
 
