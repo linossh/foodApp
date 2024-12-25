@@ -64,7 +64,9 @@ import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 
@@ -413,7 +415,7 @@ fun EcraProfile(userId: String, onBack: () -> Unit) {
     val db = FirebaseFirestore.getInstance()
     var userName by remember { mutableStateOf("Carregando...") }
     var userReviews by remember { mutableStateOf(emptyList<String>()) }
-    val showDialog = remember { mutableStateOf(false) }
+    var showAddFriendDialog by remember { mutableStateOf(false) } // Estado do pop-up
 
     // Buscar dados do usuário e suas reviews
     LaunchedEffect(userId) {
@@ -457,10 +459,22 @@ fun EcraProfile(userId: String, onBack: () -> Unit) {
             )
         }
 
+        // Botão de adicionar amigo no canto superior direito
+        IconButton(
+            onClick = { showAddFriendDialog = true }, // Abre o diálogo
+            modifier = Modifier.align(Alignment.TopEnd)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.baseline_person_add_24),
+                contentDescription = "Adicionar amigo",
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 48.dp), // Deixa espaço para o botão no topo
+                .padding(top = 48.dp), // Deixa espaço para os botões no topo
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Ícone maior no topo
@@ -528,38 +542,138 @@ fun EcraProfile(userId: String, onBack: () -> Unit) {
                     }
                 }
             }
-
-            // Botão para alterar a senha
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = { showDialog.value = true },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(text = "Alterar Palavra-passe", fontWeight = FontWeight.Bold)
-            }
         }
+    }
 
-        // Popup para alteração de senha
-        if (showDialog.value) {
-            PasswordChangeDialog(
-                onDismiss = { showDialog.value = false },
-                onPasswordChange = { oldPassword, newPassword, confirmPassword ->
-                    // Adicione aqui a lógica para alterar a senha
-                    showDialog.value = false
+    // Exibe o pop-up de confirmação para adicionar amigo
+    if (showAddFriendDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddFriendDialog = false },
+            title = { Text(text = "Adicionar Amigo") },
+            text = { Text(text = "Pretende adicionar $userName à sua lista de amigos?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val loggedUserId = FirebaseAuth.getInstance().currentUser?.uid
+                    if (loggedUserId != null) {
+                        db.collection("friends").document(loggedUserId)
+                            .set(
+                                mapOf("friendsList" to FieldValue.arrayUnion(userId)),
+                                SetOptions.merge()
+                            )
+                            .addOnSuccessListener { Log.d("Firestore", "Amigo adicionado com sucesso.") }
+                            .addOnFailureListener { e -> Log.e("Firestore", "Erro ao adicionar amigo.", e) }
+                    } else {
+                        Log.e("Firestore", "Usuário logado não encontrado.")
+                    }
+                    showAddFriendDialog = false
+                }) {
+                    Text("Sim")
                 }
-            )
-        }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddFriendDialog = false }) {
+                    Text("Não")
+                }
+            }
+        )
     }
 }
 
 @Composable
 fun Ecra03() {
-    Column(modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center)) {
-        Text(text = stringResource(id = R.string.groups_str),
-            fontWeight = FontWeight.Bold, color = Color.Gray,
+    val db = FirebaseFirestore.getInstance()
+    val currentUser = FirebaseAuth.getInstance().currentUser
+    var friendsList by remember { mutableStateOf(emptyList<Pair<String, String>>()) } // Lista de pares (ID, Nome)
+
+    // Buscar e monitorar a lista de amigos em tempo real
+    LaunchedEffect(currentUser?.uid) {
+        currentUser?.uid?.let { userId ->
+            db.collection("friends").document(userId)
+                .addSnapshotListener { snapshot, e ->
+                    if (e != null) {
+                        Log.e("Firestore", "Erro ao ouvir lista de amigos.", e)
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null && snapshot.exists()) {
+                        val friendIds = snapshot.get("friendsList") as? List<String> ?: emptyList()
+                        Log.d("Firestore", "IDs dos amigos: $friendIds")
+
+                        if (friendIds.isNotEmpty()) {
+                            val friendDetails = mutableListOf<Pair<String, String>>() // Lista de pares (ID, Nome)
+
+                            friendIds.forEach { friendId ->
+                                db.collection("users").document(friendId).get()
+                                    .addOnSuccessListener { friendDoc ->
+                                        val name = friendDoc.getString("name") ?: "Desconhecido"
+                                        friendDetails.add(Pair(friendId, name))
+
+                                        // Atualizar a lista quando terminar de buscar os nomes
+                                        if (friendDetails.size == friendIds.size) {
+                                            friendsList = friendDetails
+                                        }
+                                    }
+                                    .addOnFailureListener { e ->
+                                        Log.e("Firestore", "Erro ao buscar nome do amigo $friendId.", e)
+                                    }
+                            }
+                        } else {
+                            friendsList = emptyList()
+                        }
+                    } else {
+                        friendsList = emptyList()
+                    }
+                }
+        }
+    }
+
+    // Interface para exibir a lista de amigos
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .wrapContentSize(Alignment.Center)
+    ) {
+        // Título
+        Text(
+            text = stringResource(id = R.string.groups_str),
+            fontWeight = FontWeight.Bold,
+            color = Color.Gray,
             modifier = Modifier.align(Alignment.CenterHorizontally),
-            textAlign = TextAlign.Center, fontSize = 18.sp
+            textAlign = TextAlign.Center,
+            fontSize = 18.sp
         )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Exibir a lista de amigos
+        if (friendsList.isEmpty()) {
+            Text(
+                text = "Você ainda não tem amigos.",
+                fontWeight = FontWeight.Normal,
+                color = Color.Gray,
+                textAlign = TextAlign.Center,
+                fontSize = 16.sp,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(friendsList) { friend ->
+                    // Exibir cada amigo como um item da lista
+                    Text(
+                        text = "Nome: ${friend.second} (ID: ${friend.first})",
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .padding(16.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+        }
     }
 }
 
