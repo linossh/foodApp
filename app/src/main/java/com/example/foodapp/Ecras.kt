@@ -420,9 +420,13 @@ fun EcraProfile(userId: String, onBack: () -> Unit) {
         // Buscar o nome do usuário
         db.collection("users").document(userId).get()
             .addOnSuccessListener { document ->
-                userName = document.getString("name") ?: "Usuário desconhecido"
+                if (document.exists()) {
+                    userName = document.getString("name") ?: "Usuário desconhecido"
+                } else {
+                    userName = "Usuário não encontrado"
+                }
             }
-            .addOnFailureListener {
+            .addOnFailureListener { e ->
                 userName = "Erro ao carregar nome"
             }
 
