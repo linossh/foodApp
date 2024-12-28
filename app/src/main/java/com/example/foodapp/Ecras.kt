@@ -581,6 +581,7 @@ fun Ecra03() {
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
     var incomingRequests by remember { mutableStateOf(emptyList<Map<String, String>>()) }
+    var userGroups by remember { mutableStateOf(emptyList<Map<String, Any>>()) }
 
     // Função para buscar usuários
     fun searchUsers(query: String) {
@@ -606,6 +607,55 @@ fun Ecra03() {
             }
     }
 
+    // Função para criar ou atualizar o grupo
+    fun createOrUpdateGroup(senderId: String, receiverId: String) {
+        val members = listOf(senderId, receiverId)
+
+        // Verificar se o grupo já existe
+        db.collection("groups")
+            .whereArrayContains("members", senderId)
+            .get()
+            .addOnSuccessListener { result ->
+                val existingGroup = result.documents.find { doc ->
+                    val groupMembers = doc.get("members") as? List<String>
+                    groupMembers?.contains(receiverId) == true
+                }
+
+                if (existingGroup != null) {
+                    // Atualizar grupo existente
+                    val groupId = existingGroup.id
+                    val updatedMembers = (existingGroup.get("members") as? List<String>).orEmpty().toMutableSet()
+                    updatedMembers.addAll(members)
+
+                    db.collection("groups").document(groupId).update("members", updatedMembers.toList())
+                        .addOnSuccessListener {
+                            Log.d("Firestore", "Grupo atualizado com novos membros: $updatedMembers")
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("Firestore", "Erro ao atualizar grupo", e)
+                        }
+                } else {
+                    // Criar novo grupo
+                    val newGroup = mapOf(
+                        "members" to members,
+                        "createdBy" to senderId,
+                        "createdAt" to FieldValue.serverTimestamp()
+                    )
+
+                    db.collection("groups").add(newGroup)
+                        .addOnSuccessListener { docRef ->
+                            Log.d("Firestore", "Novo grupo criado com ID: ${docRef.id}")
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("Firestore", "Erro ao criar grupo", e)
+                        }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e("Firestore", "Erro ao verificar grupos existentes", e)
+            }
+    }
+
     // Função para enviar pedido de divisão de conta
     fun sendSplitRequest(targetUserId: String) {
         val senderName = currentUser?.displayName ?: "Desconhecido"
@@ -624,11 +674,11 @@ fun Ecra03() {
             }
     }
 
-    // Monitorar pedidos recebidos em tempo real (somente para o usuário atual)
+    // Monitorar pedidos recebidos
     LaunchedEffect(currentUser?.uid) {
         currentUser?.uid?.let { userId ->
             db.collection("splitRequests").document(userId).collection("requests")
-                .whereEqualTo("status", "pending") // Monitora apenas pedidos pendentes
+                .whereEqualTo("status", "pending")
                 .addSnapshotListener { snapshot, e ->
                     if (e != null) {
                         Log.e("Firestore", "Erro ao ouvir pedidos", e)
@@ -647,12 +697,31 @@ fun Ecra03() {
         }
     }
 
+    // Monitorar grupos do usuário
+    LaunchedEffect(currentUser?.uid) {
+        currentUser?.uid?.let { userId ->
+            db.collection("groups")
+                .whereArrayContains("members", userId)
+                .addSnapshotListener { snapshot, e ->
+                    if (e != null) {
+                        Log.e("Firestore", "Erro ao monitorar grupos", e)
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null) {
+                        userGroups = snapshot.documents.mapNotNull { doc ->
+                            mapOf(
+                                "id" to doc.id,
+                                "members" to (doc.get("members") as? List<String>).orEmpty(),
+                                "createdBy" to (doc.getString("createdBy") ?: "")
+                            )
+                        }
+                    }
+                }
+        }
+    }
+
     // Layout da tela
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         // Barra de pesquisa
         OutlinedTextField(
             value = searchQuery,
@@ -661,9 +730,7 @@ fun Ecra03() {
                 searchUsers(query)
             },
             label = { Text("Procurar usuários") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp)
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
         )
 
         // Resultados da pesquisa
@@ -681,7 +748,9 @@ fun Ecra03() {
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    IconButton(onClick = { sendSplitRequest(user.first) }) {
+                    IconButton(onClick = {
+                        sendSplitRequest(user.first)
+                    }) {
                         Icon(
                             painter = painterResource(id = R.drawable.baseline_person_add_24),
                             contentDescription = "Enviar Pedido"
@@ -690,9 +759,19 @@ fun Ecra03() {
                 }
             }
         }
+
+        // Mostrar grupos do usuário
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Seus Grupos", fontWeight = FontWeight.Bold)
+        LazyColumn {
+            items(userGroups) { group ->
+                val members = (group["members"] as? List<String>).orEmpty()
+                Text("Grupo com membros: ${members.joinToString(", ")}")
+            }
+        }
     }
 
-    // Exibir pedidos recebidos
+    // Exibir pop-ups para pedidos recebidos
     incomingRequests.forEach { request ->
         val senderName = request["senderName"] ?: "Desconhecido"
         AlertDialog(
@@ -701,11 +780,11 @@ fun Ecra03() {
             text = { Text("$senderName pediu para dividir uma conta com você.") },
             confirmButton = {
                 Button(onClick = {
-                    // Atualizar status para "aceito" no Firestore
-                    val docId = request["id"] ?: return@Button
+                    val senderId = request["senderId"] ?: return@Button
                     currentUser?.uid?.let { userId ->
+                        createOrUpdateGroup(senderId, userId)
                         db.collection("splitRequests").document(userId)
-                            .collection("requests").document(docId)
+                            .collection("requests").document(request["id"] ?: "")
                             .update("status", "accepted")
                     }
                 }) {
@@ -714,11 +793,9 @@ fun Ecra03() {
             },
             dismissButton = {
                 Button(onClick = {
-                    // Atualizar status para "rejeitado" no Firestore
-                    val docId = request["id"] ?: return@Button
                     currentUser?.uid?.let { userId ->
                         db.collection("splitRequests").document(userId)
-                            .collection("requests").document(docId)
+                            .collection("requests").document(request["id"] ?: "")
                             .update("status", "rejected")
                     }
                 }) {
