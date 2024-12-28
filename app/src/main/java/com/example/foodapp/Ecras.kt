@@ -4,7 +4,6 @@ import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +32,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +42,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,10 +66,6 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
-import com.google.firebase.firestore.ktx.firestore
-import com.google.firebase.ktx.Firebase
-
-val db = Firebase.firestore
 
 @Composable
 fun Ecra01() {
@@ -309,7 +304,7 @@ fun ReviewDialog(
     onSubmit: (String, Int, String) -> Unit
 ) {
     var restaurant by remember { mutableStateOf("") }
-    var stars by remember { mutableStateOf(3) }
+    var stars by remember { mutableIntStateOf(3) }
     var review by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -422,10 +417,10 @@ fun EcraProfile(userId: String, onBack: () -> Unit) {
         // Buscar o nome do usuário
         db.collection("users").document(userId).get()
             .addOnSuccessListener { document ->
-                if (document.exists()) {
-                    userName = document.getString("name") ?: "Usuário desconhecido"
+                userName = if (document.exists()) {
+                    document.getString("name") ?: "Usuário desconhecido"
                 } else {
-                    userName = "Usuário não encontrado"
+                    "Usuário não encontrado"
                 }
             }
             .addOnFailureListener { e ->
@@ -583,7 +578,7 @@ fun EcraProfile(userId: String, onBack: () -> Unit) {
 fun Ecra03() {
     val db = FirebaseFirestore.getInstance()
     val currentUser = FirebaseAuth.getInstance().currentUser
-    var friendsList by remember { mutableStateOf(emptyList<Pair<String, String>>()) } // Lista de pares (ID, Nome)
+    var friendsList by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
 
     // Buscar e monitorar a lista de amigos em tempo real
     LaunchedEffect(currentUser?.uid) {
@@ -591,25 +586,26 @@ fun Ecra03() {
             db.collection("friends").document(userId)
                 .addSnapshotListener { snapshot, e ->
                     if (e != null) {
-                        Log.e("Firestore", "Erro ao ouvir lista de amigos.", e)
+                        Log.e("Firestore", "Erro ao ouvir lista de amigos para o usuário $userId.", e)
                         return@addSnapshotListener
                     }
                     if (snapshot != null && snapshot.exists()) {
                         val friendIds = snapshot.get("friendsList") as? List<String> ?: emptyList()
-                        Log.d("Firestore", "IDs dos amigos: $friendIds")
+                        Log.d("Firestore", "IDs dos amigos do usuário $userId: $friendIds")
 
                         if (friendIds.isNotEmpty()) {
-                            val friendDetails = mutableListOf<Pair<String, String>>() // Lista de pares (ID, Nome)
+                            val friendDetails = mutableListOf<Pair<String, String>>()
 
                             friendIds.forEach { friendId ->
                                 db.collection("users").document(friendId).get()
                                     .addOnSuccessListener { friendDoc ->
                                         val name = friendDoc.getString("name") ?: "Desconhecido"
+                                        Log.d("Firestore", "Amigo encontrado: $friendId - Nome: $name")
                                         friendDetails.add(Pair(friendId, name))
 
-                                        // Atualizar a lista quando terminar de buscar os nomes
                                         if (friendDetails.size == friendIds.size) {
                                             friendsList = friendDetails
+                                            Log.d("Firestore", "Lista de amigos atualizada: $friendsList")
                                         }
                                     }
                                     .addOnFailureListener { e ->
@@ -618,11 +614,62 @@ fun Ecra03() {
                             }
                         } else {
                             friendsList = emptyList()
+                            Log.d("Firestore", "Lista de amigos do usuário $userId está vazia.")
                         }
                     } else {
                         friendsList = emptyList()
+                        Log.d("Firestore", "Documento de amigos do usuário $userId não existe ou está vazio.")
                     }
                 }
+        }
+    }
+
+    // Função atualizada para adicionar amigo bidirecionalmente usando transaction
+    fun addFriendBidirectional(user1Id: String?, user2Id: String) {
+        if (user1Id == null) {
+            Log.e("Firestore", "ID do usuário atual é nulo.")
+            return
+        }
+
+        // Criar referências para ambos os documentos
+        val user1Ref = db.collection("friends").document(user1Id)
+        val user2Ref = db.collection("friends").document(user2Id)
+
+        db.runTransaction { transaction ->
+            // Obter os documentos atuais
+            val user1Doc = transaction.get(user1Ref)
+            val user2Doc = transaction.get(user2Ref)
+
+            // Preparar as listas de amigos atualizadas
+            val user1Friends = (user1Doc.get("friendsList") as? List<String> ?: emptyList()).toMutableList()
+            val user2Friends = (user2Doc.get("friendsList") as? List<String> ?: emptyList()).toMutableList()
+
+            // Adicionar os IDs mutuamente se ainda não existirem
+            if (!user1Friends.contains(user2Id)) {
+                user1Friends.add(user2Id)
+            }
+            if (!user2Friends.contains(user1Id)) {
+                user2Friends.add(user1Id)
+            }
+
+            // Atualizar ambos os documentos na mesma transação
+            if (!user1Doc.exists()) {
+                transaction.set(user1Ref, mapOf("friendsList" to user1Friends))
+            } else {
+                transaction.update(user1Ref, "friendsList", user1Friends)
+            }
+
+            if (!user2Doc.exists()) {
+                transaction.set(user2Ref, mapOf("friendsList" to user2Friends))
+            } else {
+                transaction.update(user2Ref, "friendsList", user2Friends)
+            }
+
+            null
+        }.addOnSuccessListener {
+            Log.d("Firestore", "Amizade bidirecional adicionada com sucesso entre $user1Id e $user2Id")
+        }.addOnFailureListener { e ->
+            Log.e("Firestore", "Erro ao adicionar amizade bidirecional", e)
         }
     }
 
@@ -646,31 +693,44 @@ fun Ecra03() {
         Spacer(modifier = Modifier.height(16.dp))
 
         // Exibir a lista de amigos
-        if (friendsList.isEmpty()) {
-            Text(
-                text = "Você ainda não tem amigos.",
-                fontWeight = FontWeight.Normal,
-                color = Color.Gray,
-                textAlign = TextAlign.Center,
-                fontSize = 16.sp,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(friendsList) { friend ->
-                    // Exibir cada amigo como um item da lista
-                    Text(
-                        text = "Nome: ${friend.second} (ID: ${friend.first})",
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                            .padding(16.dp),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+        when {
+            friendsList.isEmpty() -> {
+                Text(
+                    text = "Você ainda não tem amigos.",
+                    fontWeight = FontWeight.Normal,
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center,
+                    fontSize = 16.sp,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+            }
+
+            else -> {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(friendsList) { friend ->
+                        Column(
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                .padding(16.dp)
+                        ) {
+                            Text(
+                                text = "Nome: ${friend.second} (ID: ${friend.first})",
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+
+                            Button(
+                                onClick = {
+                                    addFriendBidirectional(currentUser?.uid, friend.first)
+                                },
+                                modifier = Modifier.padding(top = 8.dp)
+                            ) {
+                                Text("Adicionar Amigo")
+                            }
+                        }
+                    }
                 }
             }
         }
