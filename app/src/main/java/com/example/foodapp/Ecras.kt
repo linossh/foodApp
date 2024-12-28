@@ -578,162 +578,154 @@ fun EcraProfile(userId: String, onBack: () -> Unit) {
 fun Ecra03() {
     val db = FirebaseFirestore.getInstance()
     val currentUser = FirebaseAuth.getInstance().currentUser
-    var friendsList by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchResults by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
+    var incomingRequests by remember { mutableStateOf(emptyList<Map<String, String>>()) }
 
-    // Buscar e monitorar a lista de amigos em tempo real
+    // Função para buscar usuários
+    fun searchUsers(query: String) {
+        if (query.isBlank()) {
+            searchResults = emptyList()
+            return
+        }
+
+        db.collection("users")
+            .whereGreaterThanOrEqualTo("name", query)
+            .whereLessThanOrEqualTo("name", query + "\uf8ff")
+            .get()
+            .addOnSuccessListener { result ->
+                val users = result.documents.mapNotNull { doc ->
+                    val id = doc.id
+                    val name = doc.getString("name") ?: "Desconhecido"
+                    id to name
+                }.filter { it.first != currentUser?.uid }
+                searchResults = users
+            }
+            .addOnFailureListener { e ->
+                Log.e("Firestore", "Erro ao buscar usuários", e)
+            }
+    }
+
+    // Função para enviar pedido de divisão de conta
+    fun sendSplitRequest(targetUserId: String) {
+        val senderName = currentUser?.displayName ?: "Desconhecido"
+        val requestData = mapOf(
+            "senderId" to currentUser?.uid,
+            "senderName" to senderName,
+            "status" to "pending"
+        )
+
+        db.collection("splitRequests").document(targetUserId).collection("requests").add(requestData)
+            .addOnSuccessListener {
+                Log.d("Firestore", "Pedido enviado para $targetUserId")
+            }
+            .addOnFailureListener { e ->
+                Log.e("Firestore", "Erro ao enviar pedido", e)
+            }
+    }
+
+    // Monitorar pedidos recebidos em tempo real (somente para o usuário atual)
     LaunchedEffect(currentUser?.uid) {
         currentUser?.uid?.let { userId ->
-            db.collection("friends").document(userId)
+            db.collection("splitRequests").document(userId).collection("requests")
+                .whereEqualTo("status", "pending") // Monitora apenas pedidos pendentes
                 .addSnapshotListener { snapshot, e ->
                     if (e != null) {
-                        Log.e("Firestore", "Erro ao ouvir lista de amigos para o usuário $userId.", e)
+                        Log.e("Firestore", "Erro ao ouvir pedidos", e)
                         return@addSnapshotListener
                     }
-                    if (snapshot != null && snapshot.exists()) {
-                        val friendIds = snapshot.get("friendsList") as? List<String> ?: emptyList()
-                        Log.d("Firestore", "IDs dos amigos do usuário $userId: $friendIds")
-
-                        if (friendIds.isNotEmpty()) {
-                            val friendDetails = mutableListOf<Pair<String, String>>()
-
-                            friendIds.forEach { friendId ->
-                                db.collection("users").document(friendId).get()
-                                    .addOnSuccessListener { friendDoc ->
-                                        val name = friendDoc.getString("name") ?: "Desconhecido"
-                                        Log.d("Firestore", "Amigo encontrado: $friendId - Nome: $name")
-                                        friendDetails.add(Pair(friendId, name))
-
-                                        if (friendDetails.size == friendIds.size) {
-                                            friendsList = friendDetails
-                                            Log.d("Firestore", "Lista de amigos atualizada: $friendsList")
-                                        }
-                                    }
-                                    .addOnFailureListener { e ->
-                                        Log.e("Firestore", "Erro ao buscar nome do amigo $friendId.", e)
-                                    }
-                            }
-                        } else {
-                            friendsList = emptyList()
-                            Log.d("Firestore", "Lista de amigos do usuário $userId está vazia.")
+                    if (snapshot != null) {
+                        incomingRequests = snapshot.documents.mapNotNull { doc ->
+                            mapOf(
+                                "id" to doc.id,
+                                "senderId" to (doc.getString("senderId") ?: ""),
+                                "senderName" to (doc.getString("senderName") ?: "Desconhecido")
+                            )
                         }
-                    } else {
-                        friendsList = emptyList()
-                        Log.d("Firestore", "Documento de amigos do usuário $userId não existe ou está vazio.")
                     }
                 }
         }
     }
 
-    // Função atualizada para adicionar amigo bidirecionalmente usando transaction
-    fun addFriendBidirectional(user1Id: String?, user2Id: String) {
-        if (user1Id == null) {
-            Log.e("Firestore", "ID do usuário atual é nulo.")
-            return
-        }
-
-        // Criar referências para ambos os documentos
-        val user1Ref = db.collection("friends").document(user1Id)
-        val user2Ref = db.collection("friends").document(user2Id)
-
-        db.runTransaction { transaction ->
-            // Obter os documentos atuais
-            val user1Doc = transaction.get(user1Ref)
-            val user2Doc = transaction.get(user2Ref)
-
-            // Preparar as listas de amigos atualizadas
-            val user1Friends = (user1Doc.get("friendsList") as? List<String> ?: emptyList()).toMutableList()
-            val user2Friends = (user2Doc.get("friendsList") as? List<String> ?: emptyList()).toMutableList()
-
-            // Adicionar os IDs mutuamente se ainda não existirem
-            if (!user1Friends.contains(user2Id)) {
-                user1Friends.add(user2Id)
-            }
-            if (!user2Friends.contains(user1Id)) {
-                user2Friends.add(user1Id)
-            }
-
-            // Atualizar ambos os documentos na mesma transação
-            if (!user1Doc.exists()) {
-                transaction.set(user1Ref, mapOf("friendsList" to user1Friends))
-            } else {
-                transaction.update(user1Ref, "friendsList", user1Friends)
-            }
-
-            if (!user2Doc.exists()) {
-                transaction.set(user2Ref, mapOf("friendsList" to user2Friends))
-            } else {
-                transaction.update(user2Ref, "friendsList", user2Friends)
-            }
-
-            null
-        }.addOnSuccessListener {
-            Log.d("Firestore", "Amizade bidirecional adicionada com sucesso entre $user1Id e $user2Id")
-        }.addOnFailureListener { e ->
-            Log.e("Firestore", "Erro ao adicionar amizade bidirecional", e)
-        }
-    }
-
-    // Interface para exibir a lista de amigos
+    // Layout da tela
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
-            .wrapContentSize(Alignment.Center)
     ) {
-        // Título
-        Text(
-            text = stringResource(id = R.string.groups_str),
-            fontWeight = FontWeight.Bold,
-            color = Color.Gray,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-            textAlign = TextAlign.Center,
-            fontSize = 18.sp
+        // Barra de pesquisa
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { query ->
+                searchQuery = query
+                searchUsers(query)
+            },
+            label = { Text("Procurar usuários") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Exibir a lista de amigos
-        when {
-            friendsList.isEmpty() -> {
-                Text(
-                    text = "Você ainda não tem amigos.",
-                    fontWeight = FontWeight.Normal,
-                    color = Color.Gray,
-                    textAlign = TextAlign.Center,
-                    fontSize = 16.sp,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-            }
-
-            else -> {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(friendsList) { friend ->
-                        Column(
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.primaryContainer)
-                                .padding(16.dp)
-                        ) {
-                            Text(
-                                text = "Nome: ${friend.second} (ID: ${friend.first})",
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-
-                            Button(
-                                onClick = {
-                                    addFriendBidirectional(currentUser?.uid, friend.first)
-                                },
-                                modifier = Modifier.padding(top = 8.dp)
-                            ) {
-                                Text("Adicionar Amigo")
-                            }
-                        }
+        // Resultados da pesquisa
+        LazyColumn {
+            items(searchResults) { user ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = user.second,
+                        modifier = Modifier.weight(1f),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(onClick = { sendSplitRequest(user.first) }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.baseline_person_add_24),
+                            contentDescription = "Enviar Pedido"
+                        )
                     }
                 }
             }
         }
+    }
+
+    // Exibir pedidos recebidos
+    incomingRequests.forEach { request ->
+        val senderName = request["senderName"] ?: "Desconhecido"
+        AlertDialog(
+            onDismissRequest = { /* Ignorar enquanto não é aceito ou rejeitado */ },
+            title = { Text("Pedido de Divisão de Conta") },
+            text = { Text("$senderName pediu para dividir uma conta com você.") },
+            confirmButton = {
+                Button(onClick = {
+                    // Atualizar status para "aceito" no Firestore
+                    val docId = request["id"] ?: return@Button
+                    currentUser?.uid?.let { userId ->
+                        db.collection("splitRequests").document(userId)
+                            .collection("requests").document(docId)
+                            .update("status", "accepted")
+                    }
+                }) {
+                    Text("Aceitar")
+                }
+            },
+            dismissButton = {
+                Button(onClick = {
+                    // Atualizar status para "rejeitado" no Firestore
+                    val docId = request["id"] ?: return@Button
+                    currentUser?.uid?.let { userId ->
+                        db.collection("splitRequests").document(userId)
+                            .collection("requests").document(docId)
+                            .update("status", "rejected")
+                    }
+                }) {
+                    Text("Rejeitar")
+                }
+            }
+        )
     }
 }
 
