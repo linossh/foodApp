@@ -63,9 +63,11 @@ import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import java.util.UUID
 
 @Composable
 fun Ecra01() {
@@ -580,10 +582,13 @@ fun Ecra03() {
     val currentUser = FirebaseAuth.getInstance().currentUser
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
-    var incomingRequests by remember { mutableStateOf(emptyList<Map<String, String>>()) }
     var userGroups by remember { mutableStateOf(emptyList<Map<String, Any>>()) }
+    var userNames by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var splitRequests by remember { mutableStateOf(emptyList<Map<String, Any>>()) }
+    var showPopup by remember { mutableStateOf(false) }
+    var currentRequest by remember { mutableStateOf<Map<String, Any>?>(null) }
 
-    // Função para buscar usuários
+    // Function to search for users
     fun searchUsers(query: String) {
         if (query.isBlank()) {
             searchResults = emptyList()
@@ -591,149 +596,248 @@ fun Ecra03() {
         }
 
         db.collection("users")
-            .whereGreaterThanOrEqualTo("name", query)
-            .whereLessThanOrEqualTo("name", query + "\uf8ff")
+            .orderBy("name")
+            .startAt(query)
+            .endAt(query + "\uf8ff")
             .get()
             .addOnSuccessListener { result ->
                 val users = result.documents.mapNotNull { doc ->
                     val id = doc.id
-                    val name = doc.getString("name") ?: "Desconhecido"
+                    val name = doc.getString("name") ?: "Unknown"
                     id to name
                 }.filter { it.first != currentUser?.uid }
                 searchResults = users
             }
             .addOnFailureListener { e ->
-                Log.e("Firestore", "Erro ao buscar usuários", e)
+                Log.e("Firestore", "Error searching users", e)
             }
     }
 
-    // Função para criar ou atualizar o grupo
-    fun createOrUpdateGroup(senderId: String, receiverId: String) {
-        val members = listOf(senderId, receiverId)
+    // Function to send a split request
+    fun sendSplitRequest(receiverId: String, receiverName: String) {
+        val currentUserId = currentUser?.uid ?: return
 
-        // Verificar se o grupo já existe
-        db.collection("groups")
-            .whereArrayContains("members", senderId)
-            .get()
-            .addOnSuccessListener { result ->
-                val existingGroup = result.documents.find { doc ->
-                    val groupMembers = doc.get("members") as? List<String>
-                    groupMembers?.contains(receiverId) == true
-                }
-
-                if (existingGroup != null) {
-                    // Atualizar grupo existente
-                    val groupId = existingGroup.id
-                    val updatedMembers = (existingGroup.get("members") as? List<String>).orEmpty().toMutableSet()
-                    updatedMembers.addAll(members)
-
-                    db.collection("groups").document(groupId).update("members", updatedMembers.toList())
-                        .addOnSuccessListener {
-                            Log.d("Firestore", "Grupo atualizado com novos membros: $updatedMembers")
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e("Firestore", "Erro ao atualizar grupo", e)
-                        }
-                } else {
-                    // Criar novo grupo
-                    val newGroup = mapOf(
-                        "members" to members,
-                        "createdBy" to senderId,
-                        "createdAt" to FieldValue.serverTimestamp()
-                    )
-
-                    db.collection("groups").add(newGroup)
-                        .addOnSuccessListener { docRef ->
-                            Log.d("Firestore", "Novo grupo criado com ID: ${docRef.id}")
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e("Firestore", "Erro ao criar grupo", e)
-                        }
-                }
-            }
-            .addOnFailureListener { e ->
-                Log.e("Firestore", "Erro ao verificar grupos existentes", e)
-            }
-    }
-
-    // Função para enviar pedido de divisão de conta
-    fun sendSplitRequest(targetUserId: String) {
-        val senderName = currentUser?.displayName ?: "Desconhecido"
-        val requestData = mapOf(
-            "senderId" to currentUser?.uid,
-            "senderName" to senderName,
-            "status" to "pending"
+        // Create a new group first
+        val groupId = UUID.randomUUID().toString()
+        val groupData = hashMapOf(
+            "id" to groupId,
+            "members" to listOf(currentUserId),
+            "createdAt" to FieldValue.serverTimestamp(),
+            "createdBy" to currentUserId
         )
 
-        db.collection("splitRequests").document(targetUserId).collection("requests").add(requestData)
+        // Create the group first
+        db.collection("groups")
+            .document(groupId)
+            .set(groupData)
             .addOnSuccessListener {
-                Log.d("Firestore", "Pedido enviado para $targetUserId")
-            }
-            .addOnFailureListener { e ->
-                Log.e("Firestore", "Erro ao enviar pedido", e)
+                // After group is created, create the split request
+                val requestData = hashMapOf(
+                    "senderId" to currentUserId,
+                    "senderName" to (currentUser?.displayName ?: "Unknown User"),
+                    "receiverId" to receiverId,
+                    "receiverName" to receiverName,
+                    "status" to "pending",
+                    "groupId" to groupId,
+                    "timestamp" to FieldValue.serverTimestamp()
+                )
+
+                db.collection("splitRequests")
+                    .add(requestData)
+                    .addOnSuccessListener { documentReference ->
+                        Log.d("Firestore", "Split request sent successfully")
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("Firestore", "Error sending split request", e)
+                    }
             }
     }
 
-    // Monitorar pedidos recebidos
-    LaunchedEffect(currentUser?.uid) {
-        currentUser?.uid?.let { userId ->
-            db.collection("splitRequests").document(userId).collection("requests")
-                .whereEqualTo("status", "pending")
-                .addSnapshotListener { snapshot, e ->
-                    if (e != null) {
-                        Log.e("Firestore", "Erro ao ouvir pedidos", e)
-                        return@addSnapshotListener
-                    }
-                    if (snapshot != null) {
-                        incomingRequests = snapshot.documents.mapNotNull { doc ->
-                            mapOf(
-                                "id" to doc.id,
-                                "senderId" to (doc.getString("senderId") ?: ""),
-                                "senderName" to (doc.getString("senderName") ?: "Desconhecido")
-                            )
-                        }
-                    }
-                }
-        }
-    }
-
-    // Monitorar grupos do usuário
-    LaunchedEffect(currentUser?.uid) {
+    // Function to load user's groups
+    fun loadUserGroups() {
         currentUser?.uid?.let { userId ->
             db.collection("groups")
                 .whereArrayContains("members", userId)
                 .addSnapshotListener { snapshot, e ->
                     if (e != null) {
-                        Log.e("Firestore", "Erro ao monitorar grupos", e)
+                        Log.e("Firestore", "Error fetching groups", e)
                         return@addSnapshotListener
                     }
-                    if (snapshot != null) {
-                        userGroups = snapshot.documents.mapNotNull { doc ->
-                            mapOf(
-                                "id" to doc.id,
-                                "members" to (doc.get("members") as? List<String>).orEmpty(),
-                                "createdBy" to (doc.getString("createdBy") ?: "")
-                            )
-                        }
+
+                    userGroups = snapshot?.documents?.mapNotNull { it.data } ?: emptyList()
+
+                    // Fetch names for all members
+                    val allMemberIds = userGroups.flatMap { group ->
+                        (group["members"] as? List<String>).orEmpty()
+                    }.toSet()
+
+                    // Only make the query if there are member IDs to fetch
+                    if (allMemberIds.isNotEmpty()) {
+                        db.collection("users")
+                            .whereIn(FieldPath.documentId(), allMemberIds.toList())
+                            .get()
+                            .addOnSuccessListener { result ->
+                                userNames = result.documents.associate { doc ->
+                                    doc.id to (doc.getString("name") ?: "Unknown")
+                                }
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e("Firestore", "Error fetching user names", e)
+                            }
+                    } else {
+                        // Reset userNames if there are no members
+                        userNames = emptyMap()
                     }
                 }
         }
     }
 
-    // Layout da tela
+    // Function to load split requests
+    fun loadSplitRequests() {
+        currentUser?.uid?.let { userId ->
+            db.collection("splitRequests")
+                .whereEqualTo("receiverId", userId)
+                .whereEqualTo("status", "pending")  // Only get pending requests
+                .addSnapshotListener { snapshot, e ->
+                    if (e != null) {
+                        Log.e("Firestore", "Error fetching split requests", e)
+                        return@addSnapshotListener
+                    }
+
+                    splitRequests = snapshot?.documents?.mapNotNull { doc ->
+                        doc.data?.plus("id" to doc.id)  // Include document ID
+                    } ?: emptyList()
+
+                    // Show popup for new requests
+                    if (splitRequests.isNotEmpty() && !showPopup) {
+                        currentRequest = splitRequests.first()
+                        showPopup = true
+                    }
+                }
+        }
+    }
+
+    fun respondToRequest(requestId: String, accept: Boolean) {
+        val currentUserId = currentUser?.uid ?: return
+
+        if (accept) {
+            // Get the request data first
+            db.collection("splitRequests")
+                .document(requestId)
+                .get()
+                .addOnSuccessListener { document ->
+                    val groupId = document.getString("groupId")
+                    if (groupId != null) {
+                        // Add user to the group
+                        db.collection("groups")
+                            .document(groupId)
+                            .update("members", FieldValue.arrayUnion(currentUserId))
+                            .addOnSuccessListener {
+                                // Update request status
+                                db.collection("splitRequests")
+                                    .document(requestId)
+                                    .update(
+                                        mapOf(
+                                            "status" to "accepted",
+                                            "responseTimestamp" to FieldValue.serverTimestamp()
+                                        )
+                                    )
+                                    .addOnSuccessListener {
+                                        showPopup = false
+                                        currentRequest = null
+                                        // Refresh the groups
+                                        loadUserGroups()
+                                    }
+                            }
+                    }
+                }
+        } else {
+            // If declined, delete the request
+            db.collection("splitRequests")
+                .document(requestId)
+                .delete()
+                .addOnSuccessListener {
+                    showPopup = false
+                    currentRequest = null
+                }
+        }
+    }
+
+    // Function to accept a split request
+    fun acceptRequest(requestId: String, groupId: String) {
+        val userId = currentUser?.uid ?: return
+
+        // Add the user to the group's members array
+        db.collection("groups").document(groupId)
+            .update("members", FieldValue.arrayUnion(userId))
+            .addOnSuccessListener {
+                Log.d("Firestore", "User added to the group successfully")
+                // Reload groups to reflect the updated state
+                loadUserGroups()
+            }
+            .addOnFailureListener { e ->
+                Log.e("Firestore", "Error adding user to group", e)
+            }
+
+        // Remove the request from Firestore (optional cleanup)
+        db.collection("splitRequests").document(requestId)
+            .delete()
+            .addOnSuccessListener {
+                Log.d("Firestore", "Split request removed successfully")
+            }
+            .addOnFailureListener { e ->
+                Log.e("Firestore", "Error removing split request", e)
+            }
+    }
+
+    // Call loadUserGroups and loadSplitRequests initially
+    LaunchedEffect(currentUser?.uid) {
+        loadUserGroups()
+        loadSplitRequests()
+    }
+
+    // Layout of the screen
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        // Barra de pesquisa
+        // Show pop-up for split requests
+        if (showPopup && currentRequest != null) {
+            AlertDialog(
+                onDismissRequest = { showPopup = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val requestId = currentRequest?.get("id") as? String ?: return@TextButton
+                        respondToRequest(requestId, true)
+                    }) {
+                        Text("Accept")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        val requestId = currentRequest?.get("id") as? String ?: return@TextButton
+                        respondToRequest(requestId, false)
+                    }) {
+                        Text("Decline")
+                    }
+                },
+                title = { Text("Split Bill Request") },
+                text = {
+                    val senderName = currentRequest?.get("senderName") as? String ?: "Unknown"
+                    Text("$senderName sent you a split bill request. Do you want to accept?")
+                }
+            )
+        }
+
+        // Search bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { query ->
                 searchQuery = query
-                searchUsers(query)
+                searchUsers(query) // Trigger search on query change
             },
-            label = { Text("Procurar usuários") },
+            label = { Text("Search Users") },
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
         )
 
-        // Resultados da pesquisa
+        // Search results
         LazyColumn {
             items(searchResults) { user ->
                 Row(
@@ -749,60 +853,69 @@ fun Ecra03() {
                         fontWeight = FontWeight.Bold
                     )
                     IconButton(onClick = {
-                        sendSplitRequest(user.first)
+                        sendSplitRequest(user.first, user.second)
                     }) {
                         Icon(
                             painter = painterResource(id = R.drawable.baseline_person_add_24),
-                            contentDescription = "Enviar Pedido"
+                            contentDescription = "Send Request"
                         )
                     }
                 }
             }
         }
 
-        // Mostrar grupos do usuário
         Spacer(modifier = Modifier.height(16.dp))
-        Text("Seus Grupos", fontWeight = FontWeight.Bold)
+
+        // Group list header
+        Text("Your Groups", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+
+        // User groups container
         LazyColumn {
             items(userGroups) { group ->
+                val groupId = group["id"] as? String ?: return@items
                 val members = (group["members"] as? List<String>).orEmpty()
-                Text("Grupo com membros: ${members.joinToString(", ")}")
+
+                // Main container for the group
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                        .background(MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(8.dp))
+                        .padding(16.dp)
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Group Members:",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        // Members list
+                        members.forEach { memberId ->
+                            val memberName = userNames[memberId] ?: "Loading..."
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = memberName,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
-    }
-
-    // Exibir pop-ups para pedidos recebidos
-    incomingRequests.forEach { request ->
-        val senderName = request["senderName"] ?: "Desconhecido"
-        AlertDialog(
-            onDismissRequest = { /* Ignorar enquanto não é aceito ou rejeitado */ },
-            title = { Text("Pedido de Divisão de Conta") },
-            text = { Text("$senderName pediu para dividir uma conta com você.") },
-            confirmButton = {
-                Button(onClick = {
-                    val senderId = request["senderId"] ?: return@Button
-                    currentUser?.uid?.let { userId ->
-                        createOrUpdateGroup(senderId, userId)
-                        db.collection("splitRequests").document(userId)
-                            .collection("requests").document(request["id"] ?: "")
-                            .update("status", "accepted")
-                    }
-                }) {
-                    Text("Aceitar")
-                }
-            },
-            dismissButton = {
-                Button(onClick = {
-                    currentUser?.uid?.let { userId ->
-                        db.collection("splitRequests").document(userId)
-                            .collection("requests").document(request["id"] ?: "")
-                            .update("status", "rejected")
-                    }
-                }) {
-                    Text("Rejeitar")
-                }
-            }
-        )
     }
 }
 
