@@ -613,43 +613,77 @@ fun Ecra03() {
             }
     }
 
-    // Function to send a split request
-    fun sendSplitRequest(receiverId: String, receiverName: String) {
-        val currentUserId = currentUser?.uid ?: return
+    // Helper function to send the split request
+    fun sendSplitRequestToFirestore(receiverId: String, receiverName: String, groupId: String) {
+        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val db = FirebaseFirestore.getInstance()
 
-        // Create a new group first
-        val groupId = UUID.randomUUID().toString()
-        val groupData = hashMapOf(
-            "id" to groupId,
-            "members" to listOf(currentUserId),
-            "createdAt" to FieldValue.serverTimestamp(),
-            "createdBy" to currentUserId
+        val requestData = hashMapOf(
+            "senderId" to currentUserId,
+            "senderName" to (FirebaseAuth.getInstance().currentUser?.displayName ?: "Unknown User"),
+            "receiverId" to receiverId,
+            "receiverName" to receiverName,
+            "status" to "pending",
+            "groupId" to groupId,
+            "timestamp" to FieldValue.serverTimestamp()
         )
 
-        // Create the group first
-        db.collection("groups")
-            .document(groupId)
-            .set(groupData)
+        db.collection("splitRequests")
+            .add(requestData)
             .addOnSuccessListener {
-                // After group is created, create the split request
-                val requestData = hashMapOf(
-                    "senderId" to currentUserId,
-                    "senderName" to (currentUser?.displayName ?: "Unknown User"),
-                    "receiverId" to receiverId,
-                    "receiverName" to receiverName,
-                    "status" to "pending",
-                    "groupId" to groupId,
-                    "timestamp" to FieldValue.serverTimestamp()
-                )
+                Log.d("Firestore", "Split request sent successfully")
+            }
+            .addOnFailureListener { e ->
+                Log.e("Firestore", "Error sending split request", e)
+            }
+    }
 
-                db.collection("splitRequests")
-                    .add(requestData)
-                    .addOnSuccessListener { documentReference ->
-                        Log.d("Firestore", "Split request sent successfully")
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e("Firestore", "Error sending split request", e)
-                    }
+    // Main function to handle split request logic
+    fun sendSplitRequest(receiverId: String, receiverName: String) {
+        val db = FirebaseFirestore.getInstance()
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        val currentUserId = currentUser?.uid ?: return
+
+        // Check if the current user already has a group
+        db.collection("groups")
+            .whereArrayContains("members", currentUserId)
+            .get()
+            .addOnSuccessListener { querySnapshot ->
+                if (querySnapshot.isEmpty) {
+                    // No group exists, create a new group
+                    val groupId = UUID.randomUUID().toString()
+                    val groupData = hashMapOf(
+                        "id" to groupId,
+                        "members" to listOf(currentUserId),
+                        "createdAt" to FieldValue.serverTimestamp(),
+                        "createdBy" to currentUserId
+                    )
+
+                    // Create the new group and send the split request
+                    db.collection("groups")
+                        .document(groupId)
+                        .set(groupData)
+                        .addOnSuccessListener {
+                            sendSplitRequestToFirestore(receiverId, receiverName, groupId)
+                        }
+                } else {
+                    // Add the receiver to the existing group
+                    val existingGroupId = querySnapshot.documents.first().id
+
+                    // Add the receiver to the existing group's members
+                    db.collection("groups")
+                        .document(existingGroupId)
+                        .update("members", FieldValue.arrayUnion(receiverId))
+                        .addOnSuccessListener {
+                            Log.d("Firestore", "User added to existing group")
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("Firestore", "Error adding user to group", e)
+                        }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e("Firestore", "Error checking existing groups", e)
             }
     }
 
@@ -690,6 +724,18 @@ fun Ecra03() {
                     }
                 }
         }
+    }
+
+    fun removeMemberFromGroup(groupId: String, memberId: String) {
+        db.collection("groups").document(groupId)
+            .update("members", FieldValue.arrayRemove(memberId))
+            .addOnSuccessListener {
+                Log.d("Firestore", "Member removed from group successfully")
+                loadUserGroups()
+            }
+            .addOnFailureListener { e ->
+                Log.e("Firestore", "Error removing member from group", e)
+            }
     }
 
     // Function to load split requests
@@ -875,7 +921,6 @@ fun Ecra03() {
                 val groupId = group["id"] as? String ?: return@items
                 val members = (group["members"] as? List<String>).orEmpty()
 
-                // Main container for the group
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -896,20 +941,50 @@ fun Ecra03() {
                             )
                         }
 
-                        // Members list
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         members.forEach { memberId ->
                             val memberName = userNames[memberId] ?: "Loading..."
-                            Row(
+
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(vertical = 4.dp)
+                                    .background(Color(0xFFFFA494), shape = RoundedCornerShape(4.dp))
+                                    .padding(8.dp)
                             ) {
-                                Text(
-                                    text = memberName,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.weight(1f)
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.baseline_face_24),
+                                            contentDescription = "User Face",
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = memberName,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.Black
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            removeMemberFromGroup(groupId, memberId)
+                                        }
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.baseline_remove_24),
+                                            contentDescription = "Remove User",
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
